@@ -40,8 +40,15 @@
   </head>
   <body>
     <canvas id="gl-canvas"></canvas>
+      <div id="controls">
+        <div style="background:#fff; padding:10px; text-align:center; border-bottom:2px solid #000;">
+        <h2>Daftar Anggota</h2>
+        <ul style="list-style-type:none; padding:0; margin:0;">
+          <li>Muhammad Daffa Rizky Sutrisno - 5025231207</li>
+          <li>Muhammad Farhan Nugroho - 5025231192</li>
+        </ul>
+      </div>
 
-    <div id="controls">
       <h3>Kontrol Objek Meja (18 sisi)</h3>
 
       <div class="control-group">
@@ -100,9 +107,12 @@
 
       <div style="text-align:left; margin-top:10px; margin-bottom:10px;">
         <h4>Foto Objek Meja</h4>
-        <img src="Table.jpg" style="width: 250px; height:auto; border:1px solid #333; border-radius:5px;">
+        <div style="display:flex; gap:10px;">
+          <img src="Table.jpg" style="width:250px; height:auto; border:1px solid #333; border-radius:5px;">
+          <img src="Table2.jpg" style="width:250px; height:auto; border:1px solid #333; border-radius:5px;">
+          <img src="Table3.jpg" style="width:250px; height:auto; border:1px solid #333; border-radius:5px;">
+        </div>
       </div>
-
 
     <!-- Vertex shader -->
     <script id="vertex-shader" type="x-shader/x-vertex">
