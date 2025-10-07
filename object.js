@@ -11,6 +11,8 @@ var gridPositions = [],
 var gridBuffer, gridColorBuffer;
 var gridSize = 10;
 var gridSpacing = 0.5;
+// gridY will be computed so the table sits on the grid initially
+var gridY = 0.0;
 
 // palette 16 warna + nama
 const colorNames = [
@@ -120,19 +122,29 @@ function buildGrid() {
     var offset = i * gridSpacing - halfSize;
 
     // Horizontal lines (parallel to X axis)
-    var color = i === gridSize / 2 ? axisColorX : gridColor;
-    gridPositions.push(vec4(-halfSize, -1.5, offset, 1.0));
-    gridPositions.push(vec4(halfSize, -1.5, offset, 1.0));
+    var color = i === Math.floor(gridSize / 2) ? axisColorX : gridColor;
+    gridPositions.push(vec4(-halfSize, gridY, offset, 1.0));
+    gridPositions.push(vec4(halfSize, gridY, offset, 1.0));
     gridColors.push(color);
     gridColors.push(color);
 
     // Vertical lines (parallel to Z axis)
-    color = i === gridSize / 2 ? axisColorZ : gridColor;
-    gridPositions.push(vec4(offset, -1.5, -halfSize, 1.0));
-    gridPositions.push(vec4(offset, -1.5, halfSize, 1.0));
+    color = i === Math.floor(gridSize / 2) ? axisColorZ : gridColor;
+    gridPositions.push(vec4(offset, gridY, -halfSize, 1.0));
+    gridPositions.push(vec4(offset, gridY, halfSize, 1.0));
     gridColors.push(color);
     gridColors.push(color);
   }
+}
+
+// compute minimum Y from a simple array of vec4 or vec3 vertices (local/object coords)
+function findMinVertexY(arr) {
+  if (!arr || arr.length === 0) return 0.0;
+  var minY = arr[0][1];
+  for (var i = 1; i < arr.length; i++) {
+    if (arr[i][1] < minY) minY = arr[i][1];
+  }
+  return minY;
 }
 function quad(a, b, c, d, col) {
   const idx = [a, b, c, a, c, d];
@@ -290,6 +302,13 @@ function init() {
   }
 
   buildInitialArrays();
+  // Compute object bottom and position so it rests on the grid
+  var localMinY = findMinVertexY(vertices);
+  // We want the lowest world Y to be slightly above the grid (grid at y=0)
+  // initial scale is 1.0, so worldMinY = localMinY + translateVec[1]
+  // set translateVec[1] so worldMinY == 0.01 (tiny offset)
+  translateVec[1] = 0.01 - localMinY;
+  gridY = 0.0; // keep grid at y=0
   buildGrid(); // NEW - Build grid
 
   program = initShaders(gl, "vertex-shader", "fragment-shader");
