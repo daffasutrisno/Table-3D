@@ -16,6 +16,7 @@
         border: 2px solid black;
         display: block;
         width: 100%;
+        user-select: none;
       }
       #controls {
         flex: 3;
@@ -26,6 +27,11 @@
       }
       .control-group {
         margin: 10px 0;
+        border: 1px solid #d0d7de;
+        padding: 10px 12px;
+        border-radius: 6px;
+        background: #ffffff;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.03);
       }
       .face-row {
         margin: 4px 0;
@@ -35,6 +41,48 @@
       }
       .face-row select {
         margin-left: 8px;
+      }
+      /* camera-controls gets a subtle left accent so it matches other groups */
+      .camera-controls {
+        background: #fff;
+        border-color: #cfe7ff;
+        box-shadow: inset 4px 0 0 #e6f3ff33;
+      }
+      .preset-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-top: 5px;
+      }
+      .preset-buttons button {
+        padding: 5px 10px;
+        font-size: 12px;
+        border: 1px solid #666;
+        background: #f7f7f8;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      .preset-buttons button:hover {
+        background: #e9eef8;
+      }
+      button {
+        margin: 2px;
+        padding: 4px 8px;
+        cursor: pointer;
+        background: #f7f7f8;
+        border: 1px solid #cfcfcf;
+        border-radius: 4px;
+      }
+      input[type="range"] {
+        width: 140px;
+        margin: 0 8px;
+        vertical-align: middle;
+      }
+      select {
+        margin: 0 8px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        border: 1px solid #d0d7de;
       }
     </style>
   </head>
@@ -49,60 +97,110 @@
         </ul>
       </div>
 
-      <h3>Kontrol Objek Meja (18 sisi)</h3>
+      <!-- Unified Object Controls Section -->
+      <div class="control-group" id="objectControls">
+        <h3>Kontrol Objek Meja (18 sisi)</h3>
 
-      <div class="control-group">
-        <h4>Transparansi</h4>
-        <input
-          id="alphaSlider"
-          type="range"
-          min="0"
-          max="1"
-          step="0.1"
-          value="1.0"
-        />
-        <span id="alphaValue">1.0</span>
-      </div>
+        <!-- Camera & Projection -->
+        <div class="control-group camera-controls">
+          <h4>Kontrol Kamera & Proyeksi</h4>
 
-      <div class="control-group">
-        <h4>Skala</h4>
-        <button id="btnSmaller">Perkecil</button>
-        <button id="btnBigger">Perbesar</button>
-        <span>Skala: <span id="scaleValue">1.0</span></span>
-      </div>
+          <div style="margin: 8px 0;">
+            <strong>Jenis Proyeksi:</strong>
+            <select id="projectionSelect">
+              <option value="perspective">Perspective</option>
+              <option value="orthographic">Orthographic</option>
+            </select>
+          </div>
 
-      <div class="control-group">
-        <h4>Translasi</h4>
-        <button id="btnLeft">Kiri</button>
-        <button id="btnUp">Atas</button>
-        <button id="btnDown">Bawah</button>
-        <button id="btnRight">Kanan</button>
-      </div>
+          <div style="margin: 8px 0;">
+            <strong>Field of View:</strong>
+            <input id="fovSlider" type="range" min="10" max="120" step="1" value="45" />
+            <span id="fovValue">45°</span>
+          </div>
 
-      <div class="control-group">
-        <h4>Rotasi</h4>
-        <button id="btnNoRotate">Diam</button>
-        <button id="btnRotateX">Rotasi X</button>
-        <button id="btnRotateY">Rotasi Y</button>
-        <button id="btnRotateXY">Rotasi XY</button>
-      </div>
+          <div style="margin: 8px 0;">
+            <strong>Jarak Kamera:</strong>
+            <input id="radiusSlider" type="range" min="1" max="10" step="0.1" value="3.0" />
+            <span id="radiusValue">3.0</span>
+          </div>
 
-      <div class="control-group">
-        <h4>Kecepatan Rotasi</h4>
-        <input
-          id="speedSlider"
-          type="range"
-          min="0"
-          max="5"
-          step="0.1"
-          value="0"
-        />
-        <span id="speedValue">0.0</span>
-      </div>
+          <div style="margin: 8px 0;">
+            <strong>View Preset:</strong>
+            <div class="preset-buttons">
+              <button id="btnFrontView">Front</button>
+              <button id="btnTopView">Top</button>
+              <button id="btnSideView">Side</button>
+              <button id="btnIsometricView">Isometric</button>
+              <button id="btnResetCamera">Reset</button>
+            </div>
+          </div>
+        </div>
 
-      <div class="control-group">
-        <h4>Warna per Sisi (18)</h4>
-        <div id="faceColorControls"></div>
+        <!-- Grid Controls -->
+        <div class="control-group">
+          <h4>Kontrol Grid</h4>
+
+          <div style="margin: 8px 0;">
+            <label>
+              <input type="checkbox" id="gridToggle" checked>
+              <strong>Tampilkan Grid</strong>
+            </label>
+          </div>
+
+          <div style="margin: 8px 0;">
+            <strong>Ukuran Grid:</strong>
+            <input id="gridSizeSlider" type="range" min="4" max="20" step="2" value="10" />
+            <span id="gridSizeValue">10</span> x <span id="gridSizeValue">10</span>
+          </div>
+
+          <div style="margin: 8px 0;">
+            <strong>Jarak Antar Garis:</strong>
+            <input id="gridSpacingSlider" type="range" min="0.2" max="1.0" step="0.1" value="0.5" />
+            <span id="gridSpacingValue">0.5</span>
+          </div>
+        </div>
+
+        <!-- Object Properties -->
+        <div class="control-group">
+          <h4>Transparansi</h4>
+          <input id="alphaSlider" type="range" min="0" max="1" step="0.1" value="1.0" />
+          <span id="alphaValue">1.0</span>
+        </div>
+
+        <div class="control-group">
+          <h4>Skala</h4>
+          <button id="btnSmaller">Perkecil</button>
+          <button id="btnBigger">Perbesar</button>
+          <span>Skala: <span id="scaleValue">1.0</span></span>
+        </div>
+
+        <div class="control-group">
+          <h4>Translasi</h4>
+          <button id="btnLeft">Kiri</button>
+          <button id="btnUp">Atas</button>
+          <button id="btnDown">Bawah</button>
+          <button id="btnRight">Kanan</button>
+        </div>
+
+        <div class="control-group">
+          <h4>Rotasi</h4>
+          <button id="btnNoRotate">Diam</button>
+          <button id="btnRotateX">Rotasi X</button>
+          <button id="btnRotateY">Rotasi Y</button>
+          <button id="btnRotateXY">Rotasi XY</button>
+        </div>
+
+        <div class="control-group">
+          <h4>Kecepatan Rotasi</h4>
+          <input id="speedSlider" type="range" min="0" max="5" step="0.1" value="0" />
+          <span id="speedValue">0.0</span>
+        </div>
+
+        <div class="control-group">
+          <h4>Warna per Sisi (18)</h4>
+          <div id="faceColorControls"></div>
+        </div>
       </div>
 
       <div style="text-align:left; margin-top:10px; margin-bottom:10px;">
@@ -114,7 +212,7 @@
         </div>
       </div>
 
-    <!-- Vertex shader -->
+    <!-- Updated Vertex shader with separate ModelView matrix -->
     <script id="vertex-shader" type="x-shader/x-vertex">
       #version 300 es
       in vec4 aPosition;
@@ -123,13 +221,15 @@
       uniform vec3 uTheta;
       uniform mat4 uProjection;
       uniform mat4 uModelMatrix;
+      uniform mat4 uModelViewMatrix;
+      
       void main(){
         vec3 ang = radians(uTheta);
         vec3 c = cos(ang), s = sin(ang);
         mat4 rx = mat4(1,0,0,0, 0,c.x,s.x,0, 0,-s.x,c.x,0, 0,0,0,1);
         mat4 ry = mat4(c.y,0,-s.y,0, 0,1,0,0, s.y,0,c.y,0, 0,0,0,1);
         vColor = aColor;
-        gl_Position = uProjection * uModelMatrix * rx * ry * aPosition;
+        gl_Position = uProjection * uModelViewMatrix * uModelMatrix * rx * ry * aPosition;
       }
     </script>
 

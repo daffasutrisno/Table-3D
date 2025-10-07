@@ -1,10 +1,16 @@
 "use strict";
 
-/* ===== Globals ===== */
 var canvas, gl, program;
 var positions = [],
   colors = [];
 var cBuffer, vBuffer;
+
+// Grid variables - NEW
+var gridPositions = [],
+  gridColors = [];
+var gridBuffer, gridColorBuffer;
+var gridSize = 10;
+var gridSpacing = 0.5;
 
 // palette 16 warna + nama
 const colorNames = [
@@ -26,22 +32,22 @@ const colorNames = [
   "Merah Muda Tua",
 ];
 const colorPalette = [
-  vec4(1, 0, 0, 1), // Merah terang (Red)
-  vec4(0, 1, 0, 1), // Hijau terang (Green)
-  vec4(0, 0, 1, 1), // Biru terang (Blue)
-  vec4(1, 1, 0, 1), // Kuning (Yellow)
-  vec4(1, 0, 1, 1), // Magenta / Fuchsia
-  vec4(0, 1, 1, 1), // Cyan / Aqua
-  vec4(0.5, 0.5, 0.5, 1), // Abu-abu sedang (Gray)
-  vec4(1, 0.5, 0, 1), // Oranye (Orange)
-  vec4(0.5, 0, 0.5, 1), // Ungu Tua (Purple)
-  vec4(0.5, 0.5, 0, 1), // Zaitun / Kuning Gelap (Olive)
-  vec4(0, 0.5, 0.5, 1), // Teal / Hijau Kebiruan
-  vec4(0.3, 0.7, 0.2, 1), // Hijau Daun (Leaf Green)
-  vec4(0.7, 0.3, 0.2, 1), // Cokelat / Merah Bata (Brown)
-  vec4(0.2, 0.7, 0.7, 1), // Aqua Lembut / Cyan Muda
-  vec4(0.7, 0.2, 0.7, 1), // Ungu Muda / Lavender
-  vec4(0.9, 0.4, 0.4, 1), // Merah Muda Tua / Salmon
+  vec4(1, 0, 0, 1),
+  vec4(0, 1, 0, 1),
+  vec4(0, 0, 1, 1),
+  vec4(1, 1, 0, 1),
+  vec4(1, 0, 1, 1),
+  vec4(0, 1, 1, 1),
+  vec4(0.5, 0.5, 0.5, 1),
+  vec4(1, 0.5, 0, 1),
+  vec4(0.5, 0, 0.5, 1),
+  vec4(0.5, 0.5, 0, 1),
+  vec4(0, 0.5, 0.5, 1),
+  vec4(0.3, 0.7, 0.2, 1),
+  vec4(0.7, 0.3, 0.2, 1),
+  vec4(0.2, 0.7, 0.7, 1),
+  vec4(0.7, 0.2, 0.7, 1),
+  vec4(0.9, 0.4, 0.4, 1),
 ];
 
 // faceColors: 18 sisi (6 top + 6 leg + 6 base)
@@ -49,7 +55,7 @@ var faceColors = [];
 for (let i = 0; i < 18; i++)
   faceColors.push(colorPalette[i % colorPalette.length]);
 
-/* ===== Build table vertices (3 cuboids) ===== */
+// Build table vertices (3 cuboids)
 function createCube(x, y, z, w, h, d) {
   return [
     vec4(x - w / 2, y - h / 2, z + d / 2, 1.0),
@@ -62,6 +68,7 @@ function createCube(x, y, z, w, h, d) {
     vec4(x + w / 2, y - h / 2, z - d / 2, 1.0),
   ];
 }
+
 var vertices = (function buildTableVertices() {
   var arr = [];
   var top = createCube(0.0, 0.9, 0.0, 1.6, 0.15, 1.1);
@@ -70,24 +77,63 @@ var vertices = (function buildTableVertices() {
   return arr.concat(top, leg, base);
 })();
 
-/* ===== Transform / control state (kept from cube3) ===== */
+// Transform variables
 var theta = [0, 0, 0];
 var alpha = 1.0;
 var scaleFactor = 1.0;
-var translateVec = [0.0, -0.45, 0.0]; // dipindahkan sedikit turun supaya meja lebih terpusat
+var translateVec = [0.0, -0.45, 0.0];
 var rotationMode = "none";
 var rotationSpeed = 0.0;
 
-var thetaLoc, alphaLoc, projLoc, modelLoc;
+// Camera variables - NEW
+var cameraRadius = 3.0;
+var cameraTheta = 0.0; // horizontal angle
+var cameraPhi = Math.PI / 4; // vertical angle
+var cameraTarget = vec3(0.0, 0.0, 0.0);
+var cameraUp = vec3(0.0, 1.0, 0.0);
+var projectionType = "perspective"; // "perspective" or "orthographic"
+var fovy = 45.0;
+var near = 0.1;
+var far = 10.0;
+var showGrid = true; // NEW - Grid visibility toggle
 
-/* ===== Build vertex & color arrays (once) =====
-   Face ordering must be consistent with updateColors()
-   We'll build arrays for 16 faces:
-     - top (6 faces)
-     - leg (4 side faces)
-     - base (6 faces)
-   total faces = 16, each face 6 vertices => 96 vertices
-*/
+// Mouse interaction - NEW
+var mouseDown = false;
+var lastMouseX = 0;
+var lastMouseY = 0;
+
+// Uniform locations
+var thetaLoc, alphaLoc, projLoc, modelLoc, modelViewLoc;
+
+// Build grid - NEW
+function buildGrid() {
+  gridPositions = [];
+  gridColors = [];
+
+  var halfSize = (gridSize * gridSpacing) / 2;
+  var gridColor = vec4(0.3, 0.3, 0.3, 0.8); // Gray color for grid
+  var axisColorX = vec4(1.0, 0.3, 0.3, 1.0); // Red for X axis
+  var axisColorZ = vec4(0.3, 0.3, 1.0, 1.0); // Blue for Z axis
+
+  // Create grid lines
+  for (let i = 0; i <= gridSize; i++) {
+    var offset = i * gridSpacing - halfSize;
+
+    // Horizontal lines (parallel to X axis)
+    var color = i === gridSize / 2 ? axisColorX : gridColor;
+    gridPositions.push(vec4(-halfSize, -1.5, offset, 1.0));
+    gridPositions.push(vec4(halfSize, -1.5, offset, 1.0));
+    gridColors.push(color);
+    gridColors.push(color);
+
+    // Vertical lines (parallel to Z axis)
+    color = i === gridSize / 2 ? axisColorZ : gridColor;
+    gridPositions.push(vec4(offset, -1.5, -halfSize, 1.0));
+    gridPositions.push(vec4(offset, -1.5, halfSize, 1.0));
+    gridColors.push(color);
+    gridColors.push(color);
+  }
+}
 function quad(a, b, c, d, col) {
   const idx = [a, b, c, a, c, d];
   for (let k = 0; k < idx.length; k++) {
@@ -122,7 +168,7 @@ function buildInitialArrays() {
   });
   offset += 8;
 
-  // leg: 6 faces (semua sisi)
+  // leg: 6 faces
   faces.forEach((f) => {
     quad(
       offset + f[0],
@@ -146,7 +192,7 @@ function buildInitialArrays() {
   });
 }
 
-/* ===== updateColors: only update color buffer (no vertex pointer rebinding) ===== */
+// update color buffer
 function updateColorsBuffer() {
   let newColors = [];
   const faces = [
@@ -158,39 +204,68 @@ function updateColorsBuffer() {
     [5, 4, 0, 1],
   ];
   let fi = 0;
-  let offset = 0;
 
-  // top
-  faces.forEach(() => {
-    for (let k = 0; k < 6; k++) newColors.push(faceColors[fi]);
-    fi++;
-  });
-  offset += 8;
-
-  // leg
-  faces.forEach(() => {
-    for (let k = 0; k < 6; k++) newColors.push(faceColors[fi]);
-    fi++;
-  });
-  offset += 8;
-
-  // base
-  faces.forEach(() => {
-    for (let k = 0; k < 6; k++) newColors.push(faceColors[fi]);
-    fi++;
-  });
+  // top + leg + base
+  for (let cube = 0; cube < 3; cube++) {
+    faces.forEach(() => {
+      for (let k = 0; k < 6; k++) newColors.push(faceColors[fi]);
+      fi++;
+    });
+  }
 
   gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, flatten(newColors));
   colors = newColors.slice();
 }
 
-/* ===== Helper equalColor ===== */
+// Helper equalColor
 function equalColor(a, b) {
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
 
-/* ===== Resize handling ===== */
+// Calculate camera position - NEW
+function getCameraPosition() {
+  var x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+  var y = cameraRadius * Math.cos(cameraPhi);
+  var z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+  return vec3(x, y, z);
+}
+
+// Mouse event handlers - NEW
+function handleMouseDown(event) {
+  mouseDown = true;
+  lastMouseX = event.clientX;
+  lastMouseY = event.clientY;
+  canvas.style.cursor = "grabbing";
+}
+
+function handleMouseUp(event) {
+  mouseDown = false;
+  canvas.style.cursor = "grab";
+}
+
+function handleMouseMove(event) {
+  if (!mouseDown) return;
+
+  var deltaX = event.clientX - lastMouseX;
+  var deltaY = event.clientY - lastMouseY;
+
+  cameraTheta += deltaX * 0.01;
+  cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraPhi + deltaY * 0.01));
+
+  lastMouseX = event.clientX;
+  lastMouseY = event.clientY;
+}
+
+function handleWheel(event) {
+  event.preventDefault();
+  cameraRadius = Math.max(
+    1.0,
+    Math.min(10.0, cameraRadius + event.deltaY * 0.01)
+  );
+}
+
+// Resize handling
 function resizeCanvasToDisplaySize() {
   const width = canvas.clientWidth | 0;
   const height = canvas.clientHeight | 0;
@@ -201,12 +276,12 @@ function resizeCanvasToDisplaySize() {
   }
 }
 
-/* ===== init & UI wiring ===== */
+// init & UI wiring
 function init() {
   canvas = document.getElementById("gl-canvas");
-  // make the canvas size match CSS layout
   canvas.width = canvas.clientWidth;
   canvas.height = canvas.clientHeight;
+  canvas.style.cursor = "grab";
 
   gl = canvas.getContext("webgl2");
   if (!gl) {
@@ -214,14 +289,13 @@ function init() {
     return;
   }
 
-  // build initial vertex/color arrays
   buildInitialArrays();
+  buildGrid(); // NEW - Build grid
 
-  // compile + use shaders
   program = initShaders(gl, "vertex-shader", "fragment-shader");
   gl.useProgram(program);
 
-  // create and fill color buffer (DYNAMIC_DRAW so bufferSubData is ok)
+  // create and fill color buffer
   cBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, flatten(colors), gl.DYNAMIC_DRAW);
@@ -237,11 +311,21 @@ function init() {
   gl.vertexAttribPointer(posLoc, 4, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(posLoc);
 
+  // NEW - Create grid buffers
+  gridBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(gridPositions), gl.STATIC_DRAW);
+
+  gridColorBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, gridColorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(gridColors), gl.STATIC_DRAW);
+
   // uniforms
   thetaLoc = gl.getUniformLocation(program, "uTheta");
   alphaLoc = gl.getUniformLocation(program, "uAlpha");
   projLoc = gl.getUniformLocation(program, "uProjection");
   modelLoc = gl.getUniformLocation(program, "uModelMatrix");
+  modelViewLoc = gl.getUniformLocation(program, "uModelViewMatrix");
 
   // GL state
   gl.clearColor(0.8, 0.8, 0.8, 1.0);
@@ -249,7 +333,13 @@ function init() {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  // UI bindings (kept from cube3)
+  // Mouse events - NEW
+  canvas.addEventListener("mousedown", handleMouseDown);
+  canvas.addEventListener("mouseup", handleMouseUp);
+  canvas.addEventListener("mousemove", handleMouseMove);
+  canvas.addEventListener("wheel", handleWheel);
+
+  // Original UI bindings
   document.getElementById("alphaSlider").oninput = (e) => {
     alpha = parseFloat(e.target.value);
     document.getElementById("alphaValue").textContent = alpha.toFixed(1);
@@ -283,11 +373,76 @@ function init() {
       rotationSpeed.toFixed(1);
   };
 
-  // create 18 dropdown controls, dikelompokkan: cube atas, tengah, bawah
+  // NEW Grid Controls
+  document.getElementById("gridToggle").onchange = (e) => {
+    showGrid = e.target.checked;
+  };
+  document.getElementById("gridSizeSlider").oninput = (e) => {
+    gridSize = parseInt(e.target.value);
+    document.getElementById("gridSizeValue").textContent = gridSize;
+    buildGrid();
+    // Update grid buffer
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(gridPositions), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridColorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(gridColors), gl.STATIC_DRAW);
+  };
+  document.getElementById("gridSpacingSlider").oninput = (e) => {
+    gridSpacing = parseFloat(e.target.value);
+    document.getElementById("gridSpacingValue").textContent =
+      gridSpacing.toFixed(1);
+    buildGrid();
+    // Update grid buffer
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(gridPositions), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridColorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(gridColors), gl.STATIC_DRAW);
+  };
+
+  // NEW Camera Controls
+  document.getElementById("projectionSelect").onchange = (e) => {
+    projectionType = e.target.value;
+  };
+  document.getElementById("fovSlider").oninput = (e) => {
+    fovy = parseFloat(e.target.value);
+    document.getElementById("fovValue").textContent = fovy.toFixed(0) + "°";
+  };
+  document.getElementById("radiusSlider").oninput = (e) => {
+    cameraRadius = parseFloat(e.target.value);
+    document.getElementById("radiusValue").textContent =
+      cameraRadius.toFixed(1);
+  };
+  document.getElementById("btnResetCamera").onclick = () => {
+    cameraRadius = 3.0;
+    cameraTheta = 0.0;
+    cameraPhi = Math.PI / 4;
+    document.getElementById("radiusValue").textContent =
+      cameraRadius.toFixed(1);
+    document.getElementById("radiusSlider").value = cameraRadius;
+  };
+
+  // Create preset view buttons
+  document.getElementById("btnFrontView").onclick = () => {
+    cameraTheta = 0.0;
+    cameraPhi = Math.PI / 2;
+  };
+  document.getElementById("btnTopView").onclick = () => {
+    cameraTheta = 0.0;
+    cameraPhi = 0.1;
+  };
+  document.getElementById("btnSideView").onclick = () => {
+    cameraTheta = Math.PI / 2;
+    cameraPhi = Math.PI / 2;
+  };
+  document.getElementById("btnIsometricView").onclick = () => {
+    cameraTheta = Math.PI / 4;
+    cameraPhi = Math.PI / 4;
+  };
+
+  // create 18 dropdown controls
   const container = document.getElementById("faceColorControls");
   container.innerHTML = "";
 
-  // helper buat section
   function addSection(title) {
     const h = document.createElement("h5");
     h.textContent = title;
@@ -316,36 +471,23 @@ function init() {
     container.appendChild(row);
   }
 
-  // Cube Atas (sisi 1–6)
   addSection("Cube Atas:");
   for (let i = 0; i < 6; i++) addFaceControl(i, faceColors[i]);
-
-  // Cube Tengah (sisi 7–12)
   addSection("Cube Tengah:");
   for (let i = 6; i < 12; i++) addFaceControl(i, faceColors[i]);
-
-  // Cube Bawah (sisi 13–18)
   addSection("Cube Bawah:");
   for (let i = 12; i < 18; i++) addFaceControl(i, faceColors[i]);
 
-  // resize handling
-  window.addEventListener("resize", () => {
-    resizeCanvasToDisplaySize();
-  });
-
-  // ensure viewport correct
+  window.addEventListener("resize", resizeCanvasToDisplaySize);
   resizeCanvasToDisplaySize();
-
-  // start render loop
   requestAnimationFrame(render);
 }
 
-/* ===== Render ===== */
 function render(time) {
   resizeCanvasToDisplaySize();
-
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+  // Object rotation
   if (rotationMode === "x") theta[1] += rotationSpeed;
   if (rotationMode === "y") theta[0] += rotationSpeed;
   if (rotationMode === "xy") {
@@ -353,29 +495,90 @@ function render(time) {
     theta[1] += rotationSpeed;
   }
 
+  // Calculate camera position and create view matrix
+  var cameraPosition = getCameraPosition();
+  var modelViewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
+
+  // Create projection matrix
   var aspect = canvas.width / canvas.height;
-  var projection = ortho(-aspect, aspect, -1, 1, -1, 1);
+  var projectionMatrix;
+  if (projectionType === "perspective") {
+    projectionMatrix = perspective(fovy, aspect, near, far);
+  } else {
+    var size = cameraRadius * 0.5;
+    projectionMatrix = ortho(
+      -size * aspect,
+      size * aspect,
+      -size,
+      size,
+      near,
+      far
+    );
+  }
+
+  // NEW - Render Grid First (if enabled)
+  if (showGrid) {
+    // Bind grid buffers
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
+    var posLoc = gl.getAttribLocation(program, "aPosition");
+    gl.vertexAttribPointer(posLoc, 4, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(posLoc);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridColorBuffer);
+    var colorLoc = gl.getAttribLocation(program, "aColor");
+    gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(colorLoc);
+
+    // Set uniforms for grid (no object transformations)
+    gl.uniform3fv(thetaLoc, [0, 0, 0]); // No rotation for grid
+    gl.uniform1f(alphaLoc, 1.0); // Full opacity for grid
+    gl.uniformMatrix4fv(projLoc, false, flatten(projectionMatrix));
+    gl.uniformMatrix4fv(modelLoc, false, flatten(mat4())); // Identity matrix
+    if (modelViewLoc) {
+      gl.uniformMatrix4fv(modelViewLoc, false, flatten(modelViewMatrix));
+    }
+
+    // Draw grid as lines
+    gl.drawArrays(gl.LINES, 0, gridPositions.length);
+  }
+
+  // Render Table Object
+  // Bind table object buffers
+  gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
+  var colorLoc = gl.getAttribLocation(program, "aColor");
+  gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(colorLoc);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
+  var posLoc = gl.getAttribLocation(program, "aPosition");
+  gl.vertexAttribPointer(posLoc, 4, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(posLoc);
+
+  // Model transformations for table
   var t = translateMatrix(translateVec[0], translateVec[1], translateVec[2]);
   var s = scalem(scaleFactor, scaleFactor, scaleFactor);
   var modelMatrix = mult(t, s);
 
+  // Send uniforms for table
   gl.uniform3fv(thetaLoc, theta);
   gl.uniform1f(alphaLoc, alpha);
-  gl.uniformMatrix4fv(projLoc, false, flatten(projection));
+  gl.uniformMatrix4fv(projLoc, false, flatten(projectionMatrix));
   gl.uniformMatrix4fv(modelLoc, false, flatten(modelMatrix));
+  if (modelViewLoc) {
+    gl.uniformMatrix4fv(modelViewLoc, false, flatten(modelViewMatrix));
+  }
 
+  // Draw table
   gl.drawArrays(gl.TRIANGLES, 0, positions.length);
-
   requestAnimationFrame(render);
 }
 
-/* ===== utilities ===== */
 function translateMatrix(x, y, z) {
   return mat4(1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1);
 }
+
 function scalem(x, y, z) {
   return mat4(x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1);
 }
 
-/* ===== start ===== */
 window.onload = init;
