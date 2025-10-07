@@ -311,6 +311,16 @@ function init() {
   gridY = 0.0; // keep grid at y=0
   buildGrid(); // NEW - Build grid
 
+  // store initial transform state so Reset Posisi can restore it
+  var initialState = {
+    translateY: translateVec[1],
+    translateX: translateVec[0],
+    translateZ: translateVec[2],
+    theta: theta.slice(),
+    scale: scaleFactor,
+    alpha: alpha,
+  };
+
   program = initShaders(gl, "vertex-shader", "fragment-shader");
   gl.useProgram(program);
 
@@ -386,6 +396,28 @@ function init() {
   document.getElementById("btnRotateX").onclick = () => (rotationMode = "x");
   document.getElementById("btnRotateY").onclick = () => (rotationMode = "y");
   document.getElementById("btnRotateXY").onclick = () => (rotationMode = "xy");
+  // Reset position button
+  var resetBtn = document.getElementById("btnResetPosition");
+  if (resetBtn)
+    resetBtn.onclick = function () {
+      translateVec[0] = initialState.translateX;
+      translateVec[1] = initialState.translateY;
+      translateVec[2] = initialState.translateZ;
+      theta = initialState.theta.slice();
+      scaleFactor = initialState.scale;
+      alpha = initialState.alpha;
+      // update UI displays
+      document.getElementById("scaleValue").textContent =
+        scaleFactor.toFixed(1);
+      document.getElementById("alphaValue").textContent = alpha.toFixed(1);
+      // reset rotation speed value and displayed text
+      rotationSpeed = 0.0;
+      var speedSlider = document.getElementById("speedSlider");
+      if (speedSlider) speedSlider.value = rotationSpeed;
+      var speedTxt = document.getElementById("speedValue");
+      if (speedTxt) speedTxt.textContent = rotationSpeed.toFixed(1);
+      rotationMode = "none";
+    };
   document.getElementById("speedSlider").oninput = (e) => {
     rotationSpeed = parseFloat(e.target.value);
     document.getElementById("speedValue").textContent =
@@ -506,13 +538,16 @@ function render(time) {
   resizeCanvasToDisplaySize();
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  // Object rotation
-  if (rotationMode === "x") theta[1] += rotationSpeed;
-  if (rotationMode === "y") theta[0] += rotationSpeed;
+  // Object rotation: theta[0]=X, theta[1]=Y
+  if (rotationMode === "x") theta[0] += rotationSpeed;
+  if (rotationMode === "y") theta[1] += rotationSpeed;
   if (rotationMode === "xy") {
     theta[0] += rotationSpeed;
     theta[1] += rotationSpeed;
   }
+  // keep angles in reasonable range
+  theta[0] = theta[0] % 360;
+  theta[1] = theta[1] % 360;
 
   // Calculate camera position and create view matrix
   var cameraPosition = getCameraPosition();
