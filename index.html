@@ -202,6 +202,56 @@
           <h4>Warna per Sisi (18)</h4>
           <div id="faceColorControls"></div>
         </div>
+
+        <!-- Lighting Controls -->
+        <div class="control-group">
+          <h4>Kontrol Pencahayaan</h4>
+          
+          <div style="margin: 8px 0;">
+            <label>
+              <input type="checkbox" id="lightingToggle" checked>
+              <strong>Aktifkan Pencahayaan</strong>
+            </label>
+          </div>
+
+          <div id="lightingControls">
+            <h5>Warna Material Meja</h5>
+            <div style="margin: 8px 0;">
+              <label><strong>Warna Dasar:</strong> <input type="color" id="materialColor" value="#8B4513" style="width:60px; height:30px; cursor:pointer;"/></label>
+            </div>
+
+            <h5>Warna Cahaya Ambient</h5>
+            <div style="margin: 8px 0;">
+              <label><strong>Warna:</strong> <input type="color" id="ambientColor" value="#333333" style="width:60px; height:30px; cursor:pointer;"/></label>
+            </div>
+
+            <h5>Warna Cahaya Diffuse</h5>
+            <div style="margin: 8px 0;">
+              <label><strong>Warna:</strong> <input type="color" id="diffuseColor" value="#ffffff" style="width:60px; height:30px; cursor:pointer;"/></label>
+            </div>
+
+            <h5>Warna Cahaya Specular</h5>
+            <div style="margin: 8px 0;">
+              <label><strong>Warna:</strong> <input type="color" id="specularColor" value="#ffffff" style="width:60px; height:30px; cursor:pointer;"/></label>
+            </div>
+
+            <h5>Posisi Sumber Cahaya</h5>
+            <div style="margin: 4px 0;">
+              <label>X: <input type="range" id="lightX" min="-5" max="5" step="0.5" value="1.0"/> <span id="lightXVal">1.0</span></label>
+            </div>
+            <div style="margin: 4px 0;">
+              <label>Y: <input type="range" id="lightY" min="-5" max="5" step="0.5" value="1.0"/> <span id="lightYVal">1.0</span></label>
+            </div>
+            <div style="margin: 4px 0;">
+              <label>Z: <input type="range" id="lightZ" min="-5" max="5" step="0.5" value="1.0"/> <span id="lightZVal">1.0</span></label>
+            </div>
+
+            <h5>Material Properties</h5>
+            <div style="margin: 4px 0;">
+              <label>Shininess: <input type="range" id="shininess" min="1" max="100" step="1" value="20"/> <span id="shininessVal">20</span></label>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div style="text-align:left; margin-top:10px; margin-bottom:10px;">
@@ -213,36 +263,95 @@
         </div>
       </div>
 
-    <!-- Updated Vertex shader with separate ModelView matrix -->
+    <!-- Vertex shader with lighting support -->
     <script id="vertex-shader" type="x-shader/x-vertex">
       #version 300 es
       in vec4 aPosition;
       in vec4 aColor;
+      in vec3 aNormal;
+      
       out vec4 vColor;
+      out vec3 vNormal;
+      out vec3 vPosition;
+      
       uniform vec3 uTheta;
       uniform mat4 uProjection;
       uniform mat4 uModelMatrix;
       uniform mat4 uModelViewMatrix;
+      uniform bool uUseLighting;
+      uniform vec4 uMaterialColor;
       
       void main(){
         vec3 ang = radians(uTheta);
         vec3 c = cos(ang), s = sin(ang);
         mat4 rx = mat4(1,0,0,0, 0,c.x,s.x,0, 0,-s.x,c.x,0, 0,0,0,1);
         mat4 ry = mat4(c.y,0,-s.y,0, 0,1,0,0, s.y,0,c.y,0, 0,0,0,1);
-        vColor = aColor;
-        gl_Position = uProjection * uModelViewMatrix * uModelMatrix * rx * ry * aPosition;
+        
+        mat4 modelView = uModelViewMatrix * uModelMatrix * rx * ry;
+        
+        // Use material color when lighting is enabled, otherwise use per-face color
+        vColor = uUseLighting ? uMaterialColor : aColor;
+        
+        if(uUseLighting) {
+          // Transform normal to eye space
+          vNormal = normalize((modelView * vec4(aNormal, 0.0)).xyz);
+          // Transform position to eye space
+          vPosition = -(modelView * aPosition).xyz;
+        }
+        
+        gl_Position = uProjection * modelView * aPosition;
       }
     </script>
 
-    <!-- Fragment shader -->
+    <!-- Fragment shader with Phong lighting -->
     <script id="fragment-shader" type="x-shader/x-fragment">
       #version 300 es
       precision mediump float;
+      
       in vec4 vColor;
+      in vec3 vNormal;
+      in vec3 vPosition;
+      
       out vec4 fColor;
+      
       uniform float uAlpha;
+      uniform bool uUseLighting;
+      
+      // Lighting uniforms
+      uniform vec4 uLightPosition;
+      uniform vec4 uAmbientColor;
+      uniform vec4 uDiffuseColor;
+      uniform vec4 uSpecularColor;
+      uniform float uShininess;
+      
       void main(){
-        fColor = vec4(vColor.rgb, uAlpha);
+        if(uUseLighting) {
+          // Phong lighting calculation
+          vec3 N = normalize(vNormal);
+          vec3 L = normalize(uLightPosition.xyz - vPosition);
+          vec3 E = normalize(-vPosition);
+          vec3 H = normalize(L + E);
+          
+          // Ambient component
+          vec4 ambient = uAmbientColor * vColor;
+          
+          // Diffuse component
+          float Kd = max(dot(L, N), 0.0);
+          vec4 diffuse = Kd * uDiffuseColor * vColor;
+          
+          // Specular component
+          float Ks = pow(max(dot(N, H), 0.0), uShininess);
+          vec4 specular = Ks * uSpecularColor;
+          
+          if(dot(L, N) < 0.0) {
+            specular = vec4(0.0, 0.0, 0.0, 1.0);
+          }
+          
+          vec4 litColor = ambient + diffuse + specular;
+          fColor = vec4(litColor.rgb, uAlpha);
+        } else {
+          fColor = vec4(vColor.rgb, uAlpha);
+        }
       }
     </script>
 

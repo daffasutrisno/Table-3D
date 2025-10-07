@@ -2,8 +2,18 @@
 
 var canvas, gl, program;
 var positions = [],
-  colors = [];
-var cBuffer, vBuffer;
+  colors = [],
+  normals = [];
+var cBuffer, vBuffer, nBuffer;
+
+// Lighting variables
+var useLighting = true;
+var lightPosition = [1.0, 1.0, 1.0, 0.0];
+var materialColor = [0.545, 0.271, 0.075, 1.0]; // Brown color for table
+var ambientColor = [0.2, 0.2, 0.2, 1.0];
+var diffuseColor = [1.0, 1.0, 1.0, 1.0];
+var specularColor = [1.0, 1.0, 1.0, 1.0];
+var shininess = 20.0;
 
 // Grid variables - NEW
 var gridPositions = [],
@@ -146,17 +156,53 @@ function findMinVertexY(arr) {
   }
   return minY;
 }
+
+// Compute flat normals for triangles
+function computeNormal(p1, p2, p3) {
+  var t1 = subtract(vec3(p2[0], p2[1], p2[2]), vec3(p1[0], p1[1], p1[2]));
+  var t2 = subtract(vec3(p3[0], p3[1], p3[2]), vec3(p2[0], p2[1], p2[2]));
+  var normal = normalize(cross(t1, t2));
+  return normal;
+}
 function quad(a, b, c, d, col) {
   const idx = [a, b, c, a, c, d];
-  for (let k = 0; k < idx.length; k++) {
-    positions.push(vertices[idx[k]]);
-    colors.push(col);
-  }
+
+  // Compute normal for first triangle
+  var normal1 = computeNormal(vertices[a], vertices[b], vertices[c]);
+  // Compute normal for second triangle
+  var normal2 = computeNormal(vertices[a], vertices[c], vertices[d]);
+
+  // First triangle
+  positions.push(vertices[a]);
+  colors.push(col);
+  normals.push(normal1);
+
+  positions.push(vertices[b]);
+  colors.push(col);
+  normals.push(normal1);
+
+  positions.push(vertices[c]);
+  colors.push(col);
+  normals.push(normal1);
+
+  // Second triangle
+  positions.push(vertices[a]);
+  colors.push(col);
+  normals.push(normal2);
+
+  positions.push(vertices[c]);
+  colors.push(col);
+  normals.push(normal2);
+
+  positions.push(vertices[d]);
+  colors.push(col);
+  normals.push(normal2);
 }
 
 function buildInitialArrays() {
   positions.length = 0;
   colors.length = 0;
+  normals.length = 0;
   const faces = [
     [1, 0, 3, 2],
     [2, 3, 7, 6],
@@ -204,30 +250,16 @@ function buildInitialArrays() {
   });
 }
 
-// update color buffer
+// update color buffer and rebuild normals
 function updateColorsBuffer() {
-  let newColors = [];
-  const faces = [
-    [1, 0, 3, 2],
-    [2, 3, 7, 6],
-    [3, 0, 4, 7],
-    [6, 5, 1, 2],
-    [4, 5, 6, 7],
-    [5, 4, 0, 1],
-  ];
-  let fi = 0;
-
-  // top + leg + base
-  for (let cube = 0; cube < 3; cube++) {
-    faces.forEach(() => {
-      for (let k = 0; k < 6; k++) newColors.push(faceColors[fi]);
-      fi++;
-    });
-  }
+  // Rebuild arrays to ensure colors and normals match
+  buildInitialArrays();
 
   gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, flatten(newColors));
-  colors = newColors.slice();
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(colors), gl.DYNAMIC_DRAW);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(normals), gl.STATIC_DRAW);
 }
 
 // Helper equalColor
@@ -340,6 +372,14 @@ function init() {
   gl.vertexAttribPointer(posLoc, 4, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(posLoc);
 
+  // create and fill normals buffer
+  nBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(normals), gl.STATIC_DRAW);
+  var normalLoc = gl.getAttribLocation(program, "aNormal");
+  gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(normalLoc);
+
   // NEW - Create grid buffers
   gridBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
@@ -355,6 +395,15 @@ function init() {
   projLoc = gl.getUniformLocation(program, "uProjection");
   modelLoc = gl.getUniformLocation(program, "uModelMatrix");
   modelViewLoc = gl.getUniformLocation(program, "uModelViewMatrix");
+
+  // Lighting uniforms
+  var useLightingLoc = gl.getUniformLocation(program, "uUseLighting");
+  var materialColorLoc = gl.getUniformLocation(program, "uMaterialColor");
+  var lightPosLoc = gl.getUniformLocation(program, "uLightPosition");
+  var ambientLoc = gl.getUniformLocation(program, "uAmbientColor");
+  var diffuseLoc = gl.getUniformLocation(program, "uDiffuseColor");
+  var specularLoc = gl.getUniformLocation(program, "uSpecularColor");
+  var shininessLoc = gl.getUniformLocation(program, "uShininess");
 
   // GL state
   gl.clearColor(0.8, 0.8, 0.8, 1.0);
@@ -448,6 +497,70 @@ function init() {
     gl.bufferData(gl.ARRAY_BUFFER, flatten(gridPositions), gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, gridColorBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, flatten(gridColors), gl.STATIC_DRAW);
+  };
+
+  // Lighting Controls
+  document.getElementById("lightingToggle").onchange = (e) => {
+    useLighting = e.target.checked;
+    document.getElementById("lightingControls").style.display = useLighting
+      ? "block"
+      : "none";
+  };
+
+  // Helper function to convert hex color to RGB array (0-1 range)
+  function hexToRgb(hex) {
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? [
+          parseInt(result[1], 16) / 255,
+          parseInt(result[2], 16) / 255,
+          parseInt(result[3], 16) / 255,
+          1.0,
+        ]
+      : [1, 1, 1, 1];
+  }
+
+  // Material color picker
+  document.getElementById("materialColor").oninput = (e) => {
+    materialColor = hexToRgb(e.target.value);
+  };
+
+  // Ambient color picker
+  document.getElementById("ambientColor").oninput = (e) => {
+    ambientColor = hexToRgb(e.target.value);
+  };
+
+  // Diffuse color picker
+  document.getElementById("diffuseColor").oninput = (e) => {
+    diffuseColor = hexToRgb(e.target.value);
+  };
+
+  // Specular color picker
+  document.getElementById("specularColor").oninput = (e) => {
+    specularColor = hexToRgb(e.target.value);
+  };
+
+  // Light position controls
+  document.getElementById("lightX").oninput = (e) => {
+    lightPosition[0] = parseFloat(e.target.value);
+    document.getElementById("lightXVal").textContent =
+      lightPosition[0].toFixed(1);
+  };
+  document.getElementById("lightY").oninput = (e) => {
+    lightPosition[1] = parseFloat(e.target.value);
+    document.getElementById("lightYVal").textContent =
+      lightPosition[1].toFixed(1);
+  };
+  document.getElementById("lightZ").oninput = (e) => {
+    lightPosition[2] = parseFloat(e.target.value);
+    document.getElementById("lightZVal").textContent =
+      lightPosition[2].toFixed(1);
+  };
+
+  // Shininess control
+  document.getElementById("shininess").oninput = (e) => {
+    shininess = parseFloat(e.target.value);
+    document.getElementById("shininessVal").textContent = shininess.toFixed(0);
   };
 
   // NEW Camera Controls
@@ -608,6 +721,11 @@ function render(time) {
   gl.vertexAttribPointer(posLoc, 4, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(posLoc);
 
+  gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+  var normalLoc = gl.getAttribLocation(program, "aNormal");
+  gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(normalLoc);
+
   // Model transformations for table
   var t = translateMatrix(translateVec[0], translateVec[1], translateVec[2]);
   var s = scalem(scaleFactor, scaleFactor, scaleFactor);
@@ -621,6 +739,23 @@ function render(time) {
   if (modelViewLoc) {
     gl.uniformMatrix4fv(modelViewLoc, false, flatten(modelViewMatrix));
   }
+
+  // Send lighting uniforms
+  var useLightingLoc = gl.getUniformLocation(program, "uUseLighting");
+  var materialColorLoc = gl.getUniformLocation(program, "uMaterialColor");
+  var lightPosLoc = gl.getUniformLocation(program, "uLightPosition");
+  var ambientLoc = gl.getUniformLocation(program, "uAmbientColor");
+  var diffuseLoc = gl.getUniformLocation(program, "uDiffuseColor");
+  var specularLoc = gl.getUniformLocation(program, "uSpecularColor");
+  var shininessLoc = gl.getUniformLocation(program, "uShininess");
+
+  gl.uniform1i(useLightingLoc, useLighting ? 1 : 0);
+  gl.uniform4fv(materialColorLoc, materialColor);
+  gl.uniform4fv(lightPosLoc, lightPosition);
+  gl.uniform4fv(ambientLoc, ambientColor);
+  gl.uniform4fv(diffuseLoc, diffuseColor);
+  gl.uniform4fv(specularLoc, specularColor);
+  gl.uniform1f(shininessLoc, shininess);
 
   // Draw table
   gl.drawArrays(gl.TRIANGLES, 0, positions.length);
